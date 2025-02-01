@@ -56,16 +56,6 @@ In the [Twilio Console](https://console.twilio.com/), go to **Phone Numbers** > 
 
 In your Phone Number configuration settings, update the first **A call comes in** dropdown to **Webhook**, and paste your ngrok forwarding URL (referenced above), followed by `/incoming-call`. For example, `https://[your-ngrok-subdomain].ngrok.app/incoming-call`. Then, click **Save configuration**.
 
-### Update the .env file
-
-Create a `/env` file, or copy the `.env.example` file to `.env`:
-
-```
-cp .env.example .env
-```
-
-In the .env file, update the `OPENAI_API_KEY` to your OpenAI API key from the **Prerequisites**.
-
 ## Run the app
 Once ngrok is running, dependencies are installed, Twilio is configured properly, and the `.env` is set up, run the dev server with the following command:
 ```
