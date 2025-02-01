@@ -9,7 +9,6 @@ import OpenAI from "openai";
 import fs from 'fs'
 import { createClient } from '@google/maps';
 import twilio from 'twilio';
-// import axios from 'axios';
 
 let chatHistory = "";
 async function transcribeAudio(audioBuffer) {
@@ -33,10 +32,9 @@ async function transcribeAudio(audioBuffer) {
         throw err;
     }      
 }
+
 // Load environment variables from .env file
-
 dotenv.config();
-
 // Retrieve the OpenAI API key from environment variables.
 const { OPENAI_API_KEY } = process.env;
 const { GOOGLE_MAP_API_KEY } = process.env;
@@ -62,7 +60,6 @@ fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
 // Constants
-//const SYSTEM_MESSAGE = 'You are a helpful and bubbly AI assistant who loves to chat about anything the user is interested about and is prepared to offer them facts. You have a penchant for dad jokes, owl jokes, and rickrolling – subtly. Always stay positive, but work in a joke when appropriate.'
 const SYSTEM_MESSAGE = `You are a chatbot designed to assist users with the restaurant menu. You can provide information and answer questions related to the following menu items:
 
 1) Antipasto (Appetizers) / Insalata (Salads)
@@ -200,8 +197,7 @@ Extracting Food Example:
             bot: sure. no problem."
     Food: Y pizza
 `
-
-const VOICE = 'sage';
+const VOICE = 'sage'; //Open AI Voice
 const PORT = process.env.PORT || 5050; // Allow dynamic port assignment
 
 // List of Event Types to log to the console. See the OpenAI Realtime API Documentation: https://platform.openai.com/docs/api-reference/realtime
@@ -222,25 +218,19 @@ const SHOW_TIMING_MATH = false;
 // Sending SMS to the user via Twilio
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
-const twilioNumber = process.env.TWILIO_NUMBER;
-const managerNumber = process.env.MANAGER_NUMBER;
-
 const client = twilio(accountSid, authToken);
 
+//Declare a variable storing caller number
 let callerNumber;
-let initialRequest;
 
 const sendingSMS = async (content, contentToManager) => {
-    // console.log(twilioNumber);
-    // console.log(callerNumber);
-    // console.log(content);
-
+    //Sending SMS to sender
     const message = await client.messages.create({
         body: content,
         messagingServiceSid: "MG5363dedf01ed186b172e74bacf03ac6d",
         to: callerNumber,
       });
-    
+    //Sending SMS to manager
     const messageToManager = await client.messages.create({
     body: contentToManager,
     messagingServiceSid: "MG5363dedf01ed186b172e74bacf03ac6d",
@@ -251,6 +241,7 @@ const sendingSMS = async (content, contentToManager) => {
       console.log(messageToManager.body);
 }
 
+//Routing
 // Root Route
 fastify.get('/', async (request, reply) => {
     reply.send({ message: 'Twilio Media Stream Server is running!' });
@@ -386,7 +377,6 @@ fastify.register(async (fastify) => {
                 }
             };
 
-            // console.log('Sending session update:', JSON.stringify(sessionUpdate));
             openAiWs.send(JSON.stringify(sessionUpdate));
 
             // Uncomment the following line to have AI speak first:
@@ -500,8 +490,6 @@ fastify.register(async (fastify) => {
                         (async () => {
                             try {
                                 const transcription = await transcribeAudio(userBufferToProcess);
-                                // console.log(`bot: ${transcription}`);
-                                // tmpHistory.push({user: transcription});
                                 chatHistory += 'user:' + transcription + '\n';
                             } catch (error) {
                                 console.error('Error during transcription:', error);
@@ -521,12 +509,10 @@ fastify.register(async (fastify) => {
                         media: { payload: Buffer.from(response.delta, 'base64').toString('base64') }
                     };
                     connection.send(JSON.stringify(audioDelta));
-                    // console.log("OpenAI message+++");
 
                     // First delta from a new response starts the elapsed time counter
                     if (!responseStartTimestampTwilio) {
                         responseStartTimestampTwilio = latestMediaTimestamp;
-                        // if (SHOW_TIMING_MATH) console.log(`Setting start timestamp for new response: ${responseStartTimestampTwilio}ms`);
                     }
 
                     if (response.item_id) {
@@ -553,7 +539,6 @@ fastify.register(async (fastify) => {
                     case 'media':
                         latestMediaTimestamp = data.media.timestamp;
 
-                        // if (SHOW_TIMING_MATH) console.log(`Received media message with timestamp: ${latestMediaTimestamp}ms`);
                         if (openAiWs.readyState === WebSocket.OPEN) {
                             const audioAppend = {
                                 type: 'input_audio_buffer.append',
@@ -561,7 +546,6 @@ fastify.register(async (fastify) => {
                             };
                             const buffer = Buffer.from(data.media.payload, 'base64');
                             userBuffer = Buffer.concat([userBuffer, buffer]);
-                            // console.log("connection message+++");
                             openAiWs.send(JSON.stringify(audioAppend));
                         }
                         break;
@@ -569,7 +553,6 @@ fastify.register(async (fastify) => {
                         streamSid = data.start.streamSid;
                         console.log('Incoming stream has started');
 
-                        // Reset start and media timestamp on a new stream
                         responseStartTimestampTwilio = null; 
                         latestMediaTimestamp = 0;
                         break;
@@ -658,7 +641,6 @@ fastify.register(async (fastify) => {
                     },
                 ],
             });
-            // console.log(completion.choices[0].message);
             return completion.choices[0].message.content; // Extract the JSON content
         }
         // Handle connection close
