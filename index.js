@@ -3,41 +3,23 @@ import WebSocket from 'ws';
 import dotenv from 'dotenv';
 import fastifyFormBody from '@fastify/formbody';
 import fastifyWs from '@fastify/websocket';
-import {SpeechClient} from '@google-cloud/speech'; // Example: Google Cloud
-import { Transform } from 'stream';
+import {SpeechClient} from '@google-cloud/speech';
 import OpenAI from "openai";
 import fs from 'fs'
 import { createClient } from '@google/maps';
 import twilio from 'twilio';
 
+//Initialization
+let callerNumber;
 let chatHistory = "";
-async function transcribeAudio(audioBuffer) {
-    const request = {
-        audio: {
-            content: audioBuffer.toString('base64'),
-        },
-        config: {
-            encoding: 'MULAW', // Adjust based on audio format
-            sampleRateHertz: 8000, // Twilio sends 8000 Hz audio
-            languageCode: 'en-US',
-        },
-    };
-
-    try {
-        const [response] = await speechClient.recognize(request);
-        const transcription = response.results.map(result => result.alternatives[0].transcript).join('\n');
-        return transcription;
-    } catch (err) {
-        console.error('Error transcribing audio:', err);
-        throw err;
-    }      
-}
-
 // Load environment variables from .env file
 dotenv.config();
 // Retrieve the OpenAI API key from environment variables.
 const { OPENAI_API_KEY } = process.env;
 const { GOOGLE_MAP_API_KEY } = process.env;
+const accountSid = process.env.TWILIO_ACCOUNT_SID;
+const authToken = process.env.TWILIO_AUTH_TOKEN;
+const client = twilio(accountSid, authToken);
 
 if (!OPENAI_API_KEY) {
     console.error('Missing OpenAI API key. Please set it in the .env file.');
@@ -49,7 +31,7 @@ const openai = new OpenAI({apiKey: OPENAI_API_KEY});
 //Initialize googleMapsClient
 const googleMapsClient = createClient({
     key: GOOGLE_MAP_API_KEY
-  });
+});
 
 //Initialize sppechClient for live audio transctibing
 const speechClient = new SpeechClient({keyFilename: './keyFile.json'});
@@ -200,29 +182,30 @@ Extracting Food Example:
 const VOICE = 'sage'; //Open AI Voice
 const PORT = process.env.PORT || 5050; // Allow dynamic port assignment
 
-// List of Event Types to log to the console. See the OpenAI Realtime API Documentation: https://platform.openai.com/docs/api-reference/realtime
-const LOG_EVENT_TYPES = [
-    'error',
-    'response.content.done',
-    'rate_limits.updated',
-    'response.done',
-    'input_audio_buffer.committed',
-    'input_audio_buffer.speech_stopped',
-    'input_audio_buffer.speech_started',
-    'session.created'
-];
+//Transcribing audio
+async function transcribeAudio(audioBuffer) {
+    const request = {
+        audio: {
+            content: audioBuffer.toString('base64'),
+        },
+        config: {
+            encoding: 'MULAW', // Adjust based on audio format
+            sampleRateHertz: 8000, // Twilio sends 8000 Hz audio
+            languageCode: 'en-US',
+        },
+    };
 
-// Show AI response elapsed timing calculations
-const SHOW_TIMING_MATH = false;
+    try {
+        const [response] = await speechClient.recognize(request);
+        const transcription = response.results.map(result => result.alternatives[0].transcript).join('\n');
+        return transcription;
+    } catch (err) {
+        console.error('Error transcribing audio:', err);
+        throw err;
+    }      
+}
 
 // Sending SMS to the user via Twilio
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-const client = twilio(accountSid, authToken);
-
-//Declare a variable storing caller number
-let callerNumber;
-
 const sendingSMS = async (content, contentToManager) => {
     //Sending SMS to sender
     const message = await client.messages.create({
@@ -237,8 +220,8 @@ const sendingSMS = async (content, contentToManager) => {
     to: "+16158296667",
     });
 
-      console.log(message.body);
-      console.log(messageToManager.body);
+    console.log(message.body + "was sent to the user.");
+    console.log(messageToManager.body + "was sent to the manager.");
 }
 
 //Routing
@@ -247,30 +230,9 @@ fastify.get('/', async (request, reply) => {
     reply.send({ message: 'Twilio Media Stream Server is running!' });
 });
 
-// Connect to the real person
-fastify.post('/connect-real-person', (req, res) => {
-    // console.log("Connecting to Real Person..." + managerNumber);
-    
-//     <Dial callerId=${callerNumber}>
-//     <Number>"+14133420193"</Number>
-// </Dial>
-    // 
-    console.log(req);
-    console.log("Connecting to the manager...")
-    const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-            <Response>
-                <Dial>413-342-0193</Dial>
-            </Response>`;
-    res.type('text/xml').send(twimlResponse);
-});
-  
-let hostUrl;
-let callOpenAIStatus = true;
 // Route for Twilio to handle incoming calls
-// <Say> punctuation to improve text-to-speech translation
 fastify.all('/incoming-call', async (request, reply) => {
     console.log("user connected.");
-    // console.log(request);
     callerNumber = request.query.From; // Extracting the caller's number
     console.log(`Incoming call from: ${callerNumber}`);
 
@@ -278,69 +240,19 @@ fastify.all('/incoming-call', async (request, reply) => {
     
     let twimlResponse;
   
-    // if (callOpenAIStatus == false){
-    //     // console.log(request);
-    //     twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-    //     <Response>
-    //         <Redirect method="POST">https://${hostUrl}/connect-real-person</Redirect>
-    //     </Response>`;
-    // }
-    // Send back TwiML response to Twilio
-    // console.log(request.headers.host);
-        // if (callOpenAIStatus == true){
-    //     console.log(callOpenAIStatus);
-        // <Say>Please wait while we connect your call to the A. I. voice assistant.</Say>
-        // <Say>O.K. you can start talking!</Say>
-    // Store the request data (query and headers)
-            initialRequest = request
-    
-        // console.log(initialRequest);
-        twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-            <Response>
-                <Pause length="1"/>
-                <Connect>
-                    <Stream url="wss://${request.headers.host}/media-stream" />
-                </Connect>
-            </Response>`;
-        // }
-    reply.type('text/xml').send(twimlResponse);
-});
-// Check user input
-fastify.post('/check-input', (req, res) => {
-    const digit = req.body.digit;
-  
-    // console.log(req);
-    let twimlResponse;
-    console.log(hostUrl);
-    if (digit === '1') {
-    // if (callOpenAIStatus == false) {
-      console.log("User wants to talk to a real person");
-      callOpenAIStatus = false;
-      twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+    twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
         <Response>
-            <Say>Connecting to a real person...</Say>
-            <Pause length="1"/>
-            <Redirect method="POST">https://${hostUrl}/connect-real-person</Redirect>
-        </Response>`;
-    } else {
-      console.log("Continue with OpenAI interaction");
-      callOpenAIStatus = true;
-      twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-        <Response>
-        <Say>Thank you for your response. Continuing with OpenAI.</Say>
             <Pause length="1"/>
             <Connect>
                 <Stream url="wss://${request.headers.host}/media-stream" />
             </Connect>
         </Response>`;
-    }
-    res.type('text/xml').send(twimlResponse);
+    reply.type('text/xml').send(twimlResponse);
 });
 
 // WebSocket route for media-stream
 fastify.register(async (fastify) => {   
     fastify.get('/media-stream', { websocket: true }, (connection, req) => {
-        console.log('user connected');
 
         // Connection-specific state
         let streamSid = null;
@@ -358,7 +270,6 @@ fastify.register(async (fastify) => {
 
         // Open event for OpenAI WebSocket
         openAiWs.on('open', () => {
-            console.log('Connected to the OpenAI Realtime API');
             setTimeout(initializeSession, 100);
         });
 
@@ -408,7 +319,6 @@ fastify.register(async (fastify) => {
         const handleSpeechStartedEvent = () => {
             if (markQueue.length > 0 && responseStartTimestampTwilio != null) {
                 const elapsedTime = latestMediaTimestamp - responseStartTimestampTwilio;
-                // if (SHOW_TIMING_MATH) console.log(`Calculating elapsed time for truncation: ${latestMediaTimestamp} - ${responseStartTimestampTwilio} = ${elapsedTime}ms`);
 
                 if (lastAssistantItem) {
                     const truncateEvent = {
@@ -417,7 +327,6 @@ fastify.register(async (fastify) => {
                         content_index: 0,
                         audio_end_ms: elapsedTime
                     };
-                    // if (SHOW_TIMING_MATH) console.log('Sending truncation event:', JSON.stringify(truncateEvent));
                     openAiWs.send(JSON.stringify(truncateEvent));
                 }
 
@@ -452,10 +361,6 @@ fastify.register(async (fastify) => {
         openAiWs.on('message', (data) => {
             try {
                 const response = JSON.parse(data);
-
-                if (LOG_EVENT_TYPES.includes(response.type)) {
-                    // console.log(`Received event: ${response.type}`, response);
-                }
 
                 if (response.type === 'response.audio.done') {
                     if (botBuffer.length != 0){
@@ -561,60 +466,6 @@ fastify.register(async (fastify) => {
                             markQueue.shift();
                         }
                         break;
-                    // case 'dtmf':
-                    //     // Handle DTMF keypress events
-                    //     // console.log(data);
-                    //     const keyPressed = data.dtmf.digit; // Captures the key pressed
-                    //     console.log(`User pressed key: ${keyPressed}`);
-                        
-                    //     // Send a POST request to the Fastify server
-                    //     if (keyPressed == '1'){
-                    //         if (openAiWs.readyState === WebSocket.OPEN) openAiWs.close();
-                    //         callOpenAIStatus = false;
-                    //         // console.log(initialRequest);
-                    //         // console.log(req);
-                    //         // axios.post(`https://${hostUrl}/connect-real-person`, initialRequest)
-                    //         // .then(res => {})
-                    //         // .catch(err => {
-                    //         //     console.log(err);
-                    //         // })
-
-                    //         // Forward the request data (query params, headers) to the /connect-real-person endpoint
-                    //         // axios.post(`https://${hostUrl}/connect-real-person`, initialRequest.body, )
-                    //         axios.request({...initialRequest, url: `https://${hostUrl}/incoming-call`})
-                    //         .then(response => {
-                    //             console.log('Successfully forwarded the request to /connect-real-person');
-                    //         })
-                    //         .catch(error => {
-                    //             console.error('Error forwarding the request:', error);
-                    //         });
-
-                    //         // const twilioResponse = twilio.twiml.VoiceResponse;
-                    //         // const response = new twilioResponse();
-                    //         // response.dial('413-342-0193');
-                    //         // axios.post(`https://${hostUrl}/connect-real-person`)
-                    //         // .then((response) => {
-                    //         //     console.log('Redirecting call to real person...');
-                    //         // })
-                    //         // .catch(error => {
-                    //         //     console.error('Error redirecting to /check-input:', error.message);
-                    //         // });
-
-                    //         // Construct the TwiML to connect the call to a specific number
-                    //         // callOpenAIStatus = false;
-                    //         // const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
-                    //         // <Response>
-                    //         //     <Dial>469-638-3018</Dial>
-                    //         // </Response>`;
-                        
-                    //         // Send the TwiML response back to Twilio via the WebSocket
-                    //         // connection.send(twimlResponse);
-                    //         // setTimeout(() => {
-                    //         //     console.log('Closing connection after 5 seconds...');
-                    //         //     connection.close(1000, 'Normal closure'); // Close with status code 1000
-                    //         // }, 5000);
-                    //     }
-                    //     break;
                     default:
                         console.log('Received non-media event:');
                         break;
@@ -626,7 +477,6 @@ fastify.register(async (fastify) => {
         });
         //Handle chat history and save it to a json file.
         const handleHistory = async () => {
-            console.log("creating openai connection.")
             const completion = await openai.chat.completions.create({
                 model: "gpt-4-1106-preview",
                 response_format: { type: "json_object" },
@@ -635,9 +485,6 @@ fastify.register(async (fastify) => {
                     {
                         role: "user",
                         content: chatHistory + "Phone Number: " + callerNumber
-                                    // .map(obj => Object.entries(obj).map(([key, value]) => `${key}: ${value}`))
-                                    // .flat()
-                                    // .join(', '),
                     },
                 ],
             });
@@ -652,7 +499,7 @@ fastify.register(async (fastify) => {
                 const jsonData = JSON.parse(jsonResponse); // Parse the string to JSON
                  
                 if (jsonData.isOrdered == false)    return;
-                // Geocode an address.
+                // Geocoding address.
                 if (jsonData.isDelivery == true){
                     googleMapsClient.geocode({
                       address: jsonData.address
