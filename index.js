@@ -178,6 +178,64 @@ Extracting Food Example:
             user: no, then I want Y pizza, Can you provide it?
             bot: sure. no problem."
     Food: Y pizza
+
+When generating food field, reference below menu.
+This below menu is food menu so the food must be a item in the menu.
+Menu
+1) Antipasto (Appetizers) / Insalata (Salads)
+ - Arancini (Fried Rice Ball): Ragu and mozzarella cheese encased in an arborio rice ball, hand-rolled in Sicilian bread crumbs, and deep-fried to perfection. - $6
+ - Caprese (Mozzarella and Tomatoes): Thick slices of tomatoes and soft, fresh mozzarella with olive oil, decorated with balsamic glaze. - $12
+ - Parmigiana (Eggplant and Mozzarella): Layers of fried eggplant slices with basil, mozzarella, and sliced egg covered with homemade tomato sauce. - $14
+ - Vulcano Insalata (Side / Full Serving): Tomatoes, cucumbers, capers, black olives, onion, and romaine lettuce with house-made dressing. - $6 / $10
+2) Contorni (Sides)
+ - Polpette Pomodoro (Meatballs and Sauce): Giovanna's house-made meatballs in marinara, decorated with parmesan cheese and herbs. - $12
+ - Gamberi con Aglio e Burro (Shrimp, Garlic, Butter): Shrimp cooked with garlic, butter, and herbs. - $9
+3) Panini (Italian Sandwiches)
+ - Alicuti (Italian Ham and Pickled Vegetables): Fresh oven-baked bread filled with romaine lettuce, prosciutto cotto, mozzarella, tomatoes, and pickled Italian vegetables. - $17
+ - Lipari (Prosciutto, Arugula, Mozzarella): Homemade bread filled with prosciutto crudo, fresh mozzarella, arugula, and tomatoes. - $18
+ - Polpette (Meatballs, Mozzarella): Oven-baked bread filled with handmade meatballs, mozzarella, and parmesan cheese, baked to perfection. - $18
+4) Pizze (Red Pizza - 12" Brick Oven)
+ - Margherita (Cheese and Basil): Fresh mozzarella over basil and simple tomato sauce. - $15
+ - Diavola (Pepperoni and Cheese): Fresh mozzarella and pepperoni over simple tomato sauce. - $17
+ - Capricciosa (Artichoke & Italian Ham): Fior di latte mozzarella, artichoke hearts, mushrooms, olives, and prosciutto cotto over tomato sauce. - $18
+ - Norma (Eggplant and Ricotta): Fresh mozzarella, eggplant, and baked ricotta over tomato sauce. - $16
+ - Soppressata (Dry Salami): Parmesan, basil, soppressata, mozzarella, and tomato sauce. - $17
+ - Calzone (Pizza Pie): Prosciutto cotto, mushrooms, mozzarella, and tomato sauce folded inside a pizza. - $17
+5) Pizze Bianche (White Pizza - 12" Brick Oven)
+ - Parma (Prosciutto, Arugula): Fresh mozzarella, cherry tomatoes, prosciutto crudo, arugula, and aged parmesan flakes. - $20
+ - Quattro Formaggi (Four Cheese): Fresh mozzarella, asiago, gorgonzola, and parmesan. - $17
+ - Salsicce e Patate (Sausage, Potato): Fresh mozzarella, sausage, and roasted potatoes garnished with rosemary. - $18
+6) Bambino (Kids Menu)
+ - Pasta al Burro (Pasta with Butter): Spaghetti with a little bit of butter. - $6
+ - Bambino Pomodoro (Pasta, Marinara): Spaghetti in tomato sauce. - $8
+ - Bambino Formaggio (Pasta, Cheese): Fusilli with a parmesan and mozzarella sauce. - $9
+ - Bambino Polpette (Pasta, Meatballs): Spaghetti with meatballs and tomato sauce. - $10
+7) Primi (Entrees)
+ - Sicilian Lasagna (Lasagna with Eggplant): Traditional Sicilian lasagna with pasta, eggplant, prosciutto cotto, ragu, mozzarella, and bechamel with hard-boiled eggs. - $19
+ - Pasta Aglio e Olio (Olive Oil and Peppers): Spaghetti with garlic, oil, parsley, cherry tomatoes, and red peppers. - $13
+ - Pasta al Pomodoro (Marinara): House-made spaghetti in marinara sauce. - $12
+ - Pasta alla Norma (Eggplant and Ricotta): House-made tomato sauce, eggplant, baked ricotta, and basil over caserecce. - $15
+ - Pasta al Sugo con Polpette (Meatballs): House-made meatballs, tomato sauce, basil, and parmesan over spaghetti. - $17
+ - Pasta alla Giovannina (Meat Ragu): House-made ragu over tagliatelle, decorated with parmesan. - $16
+ - Tortellini con Prosciutto e Panna (Italian Ham): Prosciutto cotto and parmesan cream sauce over cheese tortellini. - $18
+ - Gnocchi ai Pesto (Basil Pesto and Cream): Basil pesto cream with pistachio shavings over gnocchi. - $17
+ - Gnocchi ai Quattro Formaggi (Four Cheese): Mozzarella, asiago, gorgonzola, and  - pecorino with fried prosciutto over gnocchi. - $17
+ - Gnocchi con Gamberi e Zaffrano (Shrimp and Saffron): Saffron cream with shrimp and gnocchi. - $18
+ - Pasta ai Gamberi e Zucchine (Shrimp and Zucchini): Fried zucchini and shrimp in garlic butter sauce over fusilli. - $19
+ - Pasta al Salmone (Smoked Salmon and Cream): Smoked salmon, cherry tomatoes, parsley, and creamy cheese sauce over fusilli. - $19
+ - Pasta alle Vongole (Clams and White Wine): White wine cream sauce over tagliatelle and clams, decorated with parsley. - $19
+8) Dolce (Desserts)
+ - Bianco e Nero: Vanilla cream puffs with Nutella mousse and chocolate shavings. - $6
+ - Cannolo: Fried pastry shells filled with ricotta cheese, pistachio, and confectioner's sugar. - $6
+ - Tiramisu: Mascarpone cream and ladyfingers soaked in coffee with chocolate sprinkles. - $6
+ - Panna Cotta: Italian custard with chocolate, caramel, or strawberry sauce. - $6
+9) Bevande (Beverages)
+ - Bottled Water - $2
+ - Pepsi Products (Bottled) - $3 (Hendersonville location only)
+ - Coke Products (Bottled) - $3 (Hermitage location only)
+ - Sparkling Water (Bottled) - $3
+ - San Pellegrino Flavors - $3
+ - Espresso - $3
 `
 const VOICE = 'sage'; //Open AI Voice
 const PORT = process.env.PORT || 5050; // Allow dynamic port assignment
@@ -301,7 +359,7 @@ fastify.register(async (fastify) => {
                     content: [
                         {
                             type: 'input_text',
-                            text: 'Greet the user with "Hello there! Thank you so much to visit our restaurant. I need specific information about you."'
+                            text: 'Greet the user with "Hello there! Thank you for calling Tutti Da Gio, I am your friendly virtual assistant here to take your order or to answer your questions.   What can I do for you today?"'
                         }
                     ]
                 }
