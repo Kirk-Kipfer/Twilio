@@ -44,8 +44,9 @@ fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
 // Constants
-const SYSTEM_MESSAGE = `You are a chatbot designed to assist users with the restaurant menu. You can provide information and answer questions related to the following menu items:
-
+const SYSTEM_MESSAGE = `You are a chatbot for the restaurant Tutti Da Gio. Your job is to answer questions about the Restaurant and to take orders.   You cannot process credit cards but you can text the restaurant the order after the customer has placed it.  Tutti Da Gio does not have any sides at this time.   Its hours are 4pm to 9pm, Tuesday and Wednesday and 11am to 9pm Thursday, Friday and Saturday.   The restaurant has two locations; Hermitage located at 5851 Old Hickory Blvd, Hermitage TN 37076 next to Shooters bar and Z-Mart, and Hendersonville located at 393 East Main Street, Hendersonville TN 37075, suite 6a.  We only accept reservations at Hendersonville for indoor seating and only for large parties of 10 or more people with a minimum order of $25 for each seat.  Hermitage is a to-go only restaurant with very limited outdoor seating.  We do not deliver for phone orders or orders place via AI.   Delivery orders can only be placed online at www dot tutti da gio dot com or www.tuttidagio.com
+We do offer imported Beer, Wine and Liquors at our Hendersonville location only.   At Hermitage, patrons are welcome to take our food into Shooters Bar, next door.
+Menu
 1) Antipasto (Appetizers) / Insalata (Salads)
  - Arancini (Fried Rice Ball): Ragu and mozzarella cheese encased in an arborio rice ball, hand-rolled in Sicilian bread crumbs, and deep-fried to perfection. - $6
  - Caprese (Mozzarella and Tomatoes): Thick slices of tomatoes and soft, fresh mozzarella with olive oil, decorated with balsamic glaze. - $12
@@ -85,9 +86,9 @@ const SYSTEM_MESSAGE = `You are a chatbot designed to assist users with the rest
  - Gnocchi ai Pesto (Basil Pesto and Cream): Basil pesto cream with pistachio shavings over gnocchi. - $17
  - Gnocchi ai Quattro Formaggi (Four Cheese): Mozzarella, asiago, gorgonzola, and  - pecorino with fried prosciutto over gnocchi. - $17
  - Gnocchi con Gamberi e Zaffrano (Shrimp and Saffron): Saffron cream with shrimp and gnocchi. - $18
- - Pasta ai Gamberi e Zucchine (Shrimp and Zucchini): Fried zucchini and shrimp in garlic butter sauce over fusilli. - $18
- - Pasta al Salmone (Smoked Salmon and Cream): Smoked salmon, cherry tomatoes, parsley, and creamy cheese sauce over fusilli. - $18
- - Pasta alle Vongole (Clams and White Wine): White wine cream sauce over tagliatelle, decorated with parsley. - $18
+ - Pasta ai Gamberi e Zucchine (Shrimp and Zucchini): Fried zucchini and shrimp in garlic butter sauce over fusilli. - $19
+ - Pasta al Salmone (Smoked Salmon and Cream): Smoked salmon, cherry tomatoes, parsley, and creamy cheese sauce over fusilli. - $19
+ - Pasta alle Vongole (Clams and White Wine): White wine cream sauce over tagliatelle and clams, decorated with parsley. - $19
 8) Dolce (Desserts)
  - Bianco e Nero: Vanilla cream puffs with Nutella mousse and chocolate shavings. - $6
  - Cannolo: Fried pastry shells filled with ricotta cheese, pistachio, and confectioner's sugar. - $6
@@ -95,10 +96,13 @@ const SYSTEM_MESSAGE = `You are a chatbot designed to assist users with the rest
  - Panna Cotta: Italian custard with chocolate, caramel, or strawberry sauce. - $6
 9) Bevande (Beverages)
  - Bottled Water - $2
- - Pepsi Products (Bottled) - $3
+ - Pepsi Products (Bottled) - $3 (Hendersonville location only)
+ - Coke Products (Bottled) - $3 (Hermitage location only)
  - Sparkling Water (Bottled) - $3
  - San Pellegrino Flavors - $3
  - Espresso - $3
+If asked about allergy information, we cannot guarantee against cross contamination and we do use gluten, tree nuts, onions, and other allergen related foods.  We do not recommend people with severe allergies eat at our restaurant.
+Do NOT answer questions for information you are not given here or offer food items that are not explicitly part of the menu provided to you.   Include a tax of 6.75% for all orders.
 
  Interaction Guidelines:
 Start by asking the user for their name.
@@ -113,10 +117,6 @@ Ask for the preferred ordering time.
 Ensure that the time is valid (e.g., formatted correctly as hours and minutes, and logically appropriate for food service hours). 
 If the time is invalid, ask the user to clarify or choose a valid time.
 
-Then ask the user if want delivery or want to have a meal in the restaurant.
-If the user says that wants delivery, then ask for the address to deliver and ensure that the address is valid.
-
-If the user wants to have a meal in the restaurant, then skip asking for the address to deliver.
 Provide confirmation of the information.
 
 Behavior Rules:
@@ -131,13 +131,11 @@ Examples:
 `
 const SYSTEM_MESSAGE_FOR_JSON = `
 You are a helpful assistant to be designed to generate a successful json object.
-Plz generate a json object with user's name, phone number, ordering food, ordering time and address.
-If the user wants delivery, then add the field 'isDelivery' and sets the value true.
-If not, sets the value false.
+Plz generate a json object with user's name, phone number, ordering food, ordering time.
 If user's name, phone number(valid phone number), ordering food(valid food name), ordering time(valid time) are all captured correctly, then sets isOrdered field true, otherwise, false.
 
 Field Names:
-name, phone, food, time, isDelivery, isOrdered and address(when delivery)
+name, phone, food, time, isOrdered
 
 Behavior Rules:
 To generate ordering food and time, follow the items that both user and bot agreed.
@@ -237,9 +235,6 @@ fastify.all('/incoming-call', async (request, reply) => {
     console.log("user connected.");
     callerNumber = request.query.From; // Extracting the caller's number
     console.log(`Incoming call from: ${callerNumber}`);
-
-    hostUrl = request.headers.host;
-    
     let twimlResponse;
   
     twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
@@ -497,53 +492,21 @@ fastify.register(async (fastify) => {
             if (openAiWs.readyState === WebSocket.OPEN) openAiWs.close();
             console.log('user disconnected.\n' + chatHistory);
             try {
+                if (jsonData.isOrdered == false){
+                    console.log("Other is not confirmed.");
+                    return;
+                };
+
                 const jsonResponse = await handleHistory();
                 const jsonData = JSON.parse(jsonResponse); // Parse the string to JSON
                  
-                if (jsonData.isOrdered == false)    return;
-                // Geocoding address.
-                if (jsonData.isDelivery == true){
-                    googleMapsClient.geocode({
-                      address: jsonData.address
-                    }, async function(err, response) {
-                        if (err) {
-                            console.error('Error in geocode:', err);
-                            //Send SMS to the user
-                            console.log('Sending SMS...(Without geocoded address)');
-                            await sendingSMS(`Dear ${jsonData.name},\nWe are pleased to inform you that your order of ${jsonData.food} has been successfully processed.\nYour food will be prepared at ${jsonData.time} as requested.\nWe hope you enjoy your meal and have a wonderful experience. Should you have any questions or\nneed further assistance, please don’t hesitate to reach out.\nThank you for choosing us. We look forward to serving you again in the future.\nWarm Regards.`,
-                                 `${jsonData.name}(Contact Number: ${callerNumber}) ordered ${jsonData.food}. This will must be prepared until ${jsonData.time}. Contact Number: ${callerNumber}`);
-                        
-                            fs.writeFileSync('output.json', JSON.stringify(jsonData, null, 2)); // Write to file without address
-                        } else {
-                            if (response.json.results && response.json.results.length > 0) {
-                                jsonData.address = response.json.results.at(0).formatted_address;
-            
-                                //Send SMS to the user
-                                console.log('Sending SMS...(Reserve)');
-                                await sendingSMS(`Dear ${jsonData.name},\nWe are pleased to inform you that your order of ${jsonData.food} has been successfully processed.\nYour delivery will arrive at ${jsonData.address}, at ${jsonData.time} as requested.\nWe hope you enjoy your meal and have a wonderful experience. Should you have any questions or\nneed further assistance, please don’t hesitate to reach out.\nThank you for choosing us. We look forward to serving you again in the future.\nWarm Regards.`,
-                                     `${jsonData.name}(Contact Number: ${callerNumber}) reserved ${jsonData.food}. This will be delivered to ${jsonData.address} at ${jsonData.time}.`);
-                                
-                                //Save geocoded address
-                                fs.writeFileSync('output.json', JSON.stringify(jsonData, null, 2)); // Write to file with address
-                            } else {
-                                //Send SMS to the user
-                                console.log('Sending SMS...(Without Geocoded address)');
-                                await sendingSMS(`Dear ${jsonData.name},\nWe are pleased to inform you that your order of ${jsonData.food} has been successfully processed.\nYour food will be prepared at ${jsonData.time} as requested.\nWe hope you enjoy your meal and have a wonderful experience. Should you have any questions or\nneed further assistance, please don’t hesitate to reach out.\nThank you for choosing us. We look forward to serving you again in the future.\nWarm Regards.`,
-                                     `${jsonData.name}(Contact Number: ${callerNumber}) ordered ${jsonData.food}. This will must be prepared until ${jsonData.time}. Contact Number: ${callerNumber}`);
-                            
-                                fs.writeFileSync('output.json', JSON.stringify(jsonData, null, 2)); // Write to file without address
-                            }
-                      }
-                    });
-                } else {
-                    //Send SMS to the user
-                    console.log('Sending SMS...(Order)');
-                    await sendingSMS(`Dear ${jsonData.name},\nWe are pleased to inform you that your order of ${jsonData.food} has been successfully processed.\nYour food will be prepared at ${jsonData.time} as requested.\nWe hope you enjoy your meal and have a wonderful experience. Should you have any questions or\nneed further assistance, please don’t hesitate to reach out.\nThank you for choosing us. We look forward to serving you again in the future.\nWarm Regards.`,
-                         `${jsonData.name}(Contact Number: ${callerNumber}) ordered ${jsonData.food}. This will must be prepared until ${jsonData.time}.`);
-                    
-                    //Save geocoded address
-                    fs.writeFileSync('output.json', JSON.stringify(jsonData, null, 2)); // Write to file with address
-                }
+                //Send SMS to the user
+                console.log('Sending SMS...');
+                await sendingSMS(`Dear ${jsonData.name},\nWe are pleased to inform you that your order of ${jsonData.food} has been successfully processed.\nYour food will be prepared at ${jsonData.time} as requested.\nWe hope you enjoy your meal and have a wonderful experience. Should you have any questions or\nneed further assistance, please don’t hesitate to reach out.\nThank you for choosing us. We look forward to serving you again in the future.\nWarm Regards.`,
+                        `${jsonData.name}(Contact Number: ${callerNumber}) ordered ${jsonData.food}. This will must be prepared until ${jsonData.time}.`);
+                
+                //Save geocoded address
+                fs.writeFileSync('output.json', JSON.stringify(jsonData, null, 2)); // Write to file with address
             } catch (error) {
                 console.error('Error:', error);
             }
