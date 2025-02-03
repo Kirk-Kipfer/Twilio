@@ -19,6 +19,8 @@ const { OPENAI_API_KEY } = process.env;
 const { GOOGLE_MAP_API_KEY } = process.env;
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
+const managerNumber = process.env.MANAGER_NUMBER;
+const messagingServiceSid = process.env.MESSAGING_SERVICE_SID;
 const client = twilio(accountSid, authToken);
 
 if (!OPENAI_API_KEY) {
@@ -210,14 +212,14 @@ const sendingSMS = async (content, contentToManager) => {
     //Sending SMS to sender
     const message = await client.messages.create({
         body: content,
-        messagingServiceSid: "MG5363dedf01ed186b172e74bacf03ac6d",
+        messagingServiceSid: messagingServiceSid,
         to: callerNumber,
       });
     //Sending SMS to manager
     const messageToManager = await client.messages.create({
     body: contentToManager,
-    messagingServiceSid: "MG5363dedf01ed186b172e74bacf03ac6d",
-    to: "+16158296667",
+    messagingServiceSid: messagingServiceSid,
+    to: managerNumber,
     });
 
     console.log(message.body + "was sent to the user.");
