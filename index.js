@@ -492,14 +492,14 @@ fastify.register(async (fastify) => {
             if (openAiWs.readyState === WebSocket.OPEN) openAiWs.close();
             console.log('user disconnected.\n' + chatHistory);
             try {
-                if (jsonData.isOrdered == false){
-                    console.log("Other is not confirmed.");
-                    return;
-                };
 
                 const jsonResponse = await handleHistory();
                 const jsonData = JSON.parse(jsonResponse); // Parse the string to JSON
                  
+                if (jsonData.isOrdered == false){
+                    console.log("Other is not confirmed.");
+                    return;
+                };
                 //Send SMS to the user
                 console.log('Sending SMS...');
                 await sendingSMS(`Dear ${jsonData.name},\nWe are pleased to inform you that your order of ${jsonData.food} has been successfully processed.\nYour food will be prepared at ${jsonData.time} as requested.\nWe hope you enjoy your meal and have a wonderful experience. Should you have any questions or\nneed further assistance, please don’t hesitate to reach out.\nThank you for choosing us. We look forward to serving you again in the future.\nWarm Regards.`,
