@@ -105,16 +105,23 @@ If asked about allergy information, we cannot guarantee against cross contaminat
 Do NOT answer questions for information you are not given here or offer food items that are not explicitly part of the menu provided to you.   Include a tax of 6.75% for all orders.
 
  Interaction Guidelines:
+ If the user doesn't want to order, then kindly say goodbye and end connection.
+
 Start by asking the user for their name.
 
 The name must be a valid human name. If the name is invalid or unclear, ask them to clarify.
-Ask for the food they would like to order.
+Ask for the foods they would like to order.
+The foods can be one or more, so keep in mind to ask the user no more foods to order.
+If the user says that no more foods to order, then continue to ask next question.
 
-When asking the food, plz mention his/her name.
+When asking the foods, plz mention his/her name.
 Verify that the item is available on the menu. If the food is not listed, inform the user and prompt them to choose a valid menu item.
 Ask for the preferred ordering time.
 
 Ensure that the time is valid (e.g., formatted correctly as hours and minutes, and logically appropriate for food service hours). 
+Also, do not allow orders for any day but the current day and ask the user to order again for today.
+And when asking the time, ask the user to clarify timezone for order so that we can schedule or prepare the order exactly.
+Also, it should not accept orders for sooner than 15 minutes, if the order is to be placed between 5:00pm and 7:30pm then the order will take between 30-45 minutes depending on restaurant capacity.
 If the time is invalid, ask the user to clarify or choose a valid time.
 
 Provide confirmation of the information.
@@ -124,48 +131,40 @@ If asked how long will an order take then we will use time of day to provide an 
 If asked if we have indoor dining, the answer is yes, we do, in Hendersonville.   Hermitage does not, and will not open back up until Feb 11th
 Do not answer any questions unrelated to the restaurant, menu, or food items.
 If a question is unrelated, simply state: "I can only assist with restaurant-related questions and menu items."
-If you decide to say goodbye, if you got enough information about the user, or want to end your response with these sentences. 
+If the order is confirmed and you decide to say goodbye or want to end your response with these sentences. 
 Examples:
 - "Goodbye! Have a great day!"
 - "Goodbye! Enjoy your meal!"
 `
 const SYSTEM_MESSAGE_FOR_JSON = `
 You are a helpful assistant to be designed to generate a successful json object.
-Plz generate a json object with user's name, phone number, ordering food, ordering time.
+Plz generate a json object with user's name, phone number, ordering foods, ordering time.
 If user's name, phone number(valid phone number), ordering food(valid food name), ordering time(valid time) are all captured correctly, then sets isOrdered field true, otherwise, false.
 
 Field Names:
-name, phone, food, time, isOrdered
+name, phone, foods, time, isOrdered
 
 Behavior Rules:
 To generate ordering food and time, follow the items that both user and bot agreed.
-And for ordering time, keep mind in the words showing day as well as time. ("tomorrow", "Tuesday", "Friday", "the day after tomorrow" etc.)
-Extracting Time Example:
-  Text1:    "user: I want to order at 3:30 am tomorrow.
-            bot: The time you mentioned isn't suitable for delivering it. What about 12:30 pm?
-            user: okay.
-            bot: Then, your odering food will be delivered at 12:30 pm tomorrow. is that okay?
-            user: No, I want to deliver it at 3:30 pm.
-            bot: No problem for that time."
-    Time: 3:30 pm tomorrow
+For generating ordering time, follow this guidline:
+    - Given a user request specifying a time duration (e.g., 'I want to have it after 30 minutes from now'), calculate the exact order time in Central Standard Time (CST). Format the output as a 24-hour time (HH:MM AM/PM CST).
+    - Given a user's request for an order time in a specific timezone, convert it to Central Standard Time (CST) in the format HH:MM AM/PM CST. Ensure that the conversion accounts for daylight saving time where applicable.
 
-  Text2:    "user: I want to order at 1:30 pm on Sunday.
-            bot: Sorry, we don't prepare service on Sunday. What about Monday?
-            user: On Monday, I'm very busy to receive the food. I want to deliver it on Thursday.
-            bot: Okay, to confirm, your food will be delivered to you at 1:30 pm on Thursday, is that right?
-            user: no, 3:00 pm I want.
-            bot: Sure, your food will be delivered to you at 3:00 pm on Thursday."
-    Time: 3:00pm on Thursday
-
-Extracting Food Example:
+Extracting Foods Example:
   Text1:    "user: I want to order orange juice.
             bot: Sorry, we don't service that you mentioned, plz order food in our menu.
             user: okay. Which food can you provide for me for a meal?
             bot: I think X pasta is the most suitable for you. What about this?
             user: I don't like pasta, I want the most delicious pizza in your menu.
             bot: Okay, then I'll provide X pizza for you, is it okay?
-            user: sure."
-    Food: X pizza
+            user: sure.
+            bot: No more foods to order?
+            user: I want to have the second item on your menu.
+            bot: The second item is Y pasta, do you like to order it?
+            user: Yes.
+            bot: No more foods to order?
+            user: Nothing."
+    Food: X pizza, Ypasta
 
   Text2:    "user: I like pasta.
             bot: Okay, which pasta do you want, we can service various types of pasta, such as ...
@@ -179,8 +178,9 @@ Extracting Food Example:
             bot: sure. no problem."
     Food: Y pizza
 
-When generating food field, reference below menu.
-This below menu is food menu so the food must be a item in the menu.
+When generating foods field, reference below menu.
+For multiple foods the user requires, then separate each food by ",".
+This below menu is foods menu so the foods must be items in the menu.
 Menu
 1) Antipasto (Appetizers) / Insalata (Salads)
  - Arancini (Fried Rice Ball): Ragu and mozzarella cheese encased in an arborio rice ball, hand-rolled in Sicilian bread crumbs, and deep-fried to perfection. - $6
@@ -433,7 +433,7 @@ fastify.register(async (fastify) => {
                                     setTimeout(() => {
                                         console.log('Closing connection after 5 seconds...');
                                         connection.close(1000, 'Normal closure'); // Close with status code 1000
-                                    }, 12000);
+                                    }, 10000);
                                 }
                             } catch (error) {
                                 console.error('Error during transcription:', error);
@@ -555,13 +555,13 @@ fastify.register(async (fastify) => {
                 const jsonData = JSON.parse(jsonResponse); // Parse the string to JSON
                  
                 if (jsonData.isOrdered == false){
-                    console.log("Other is not confirmed.");
+                    console.log("Order is not confirmed.");
                     return;
                 };
                 //Send SMS to the user
                 console.log('Sending SMS...');
-                await sendingSMS(`Dear ${jsonData.name},\nWe are pleased to inform you that your order of ${jsonData.food} has been successfully processed.\nYour food will be prepared at ${jsonData.time} as requested.\nWe hope you enjoy your meal and have a wonderful experience. Should you have any questions or\nneed further assistance, please don’t hesitate to reach out.\nThank you for choosing us. We look forward to serving you again in the future.\nWarm Regards.`,
-                        `${jsonData.name}(Contact Number: ${callerNumber}) ordered ${jsonData.food}. This will must be prepared until ${jsonData.time}.`);
+                await sendingSMS(`Dear ${jsonData.name},\nWe are pleased to inform you that your order of ${jsonData.foods} has been successfully processed.\nYour food will be prepared at ${jsonData.time} as requested.\nWe hope you enjoy your meal and have a wonderful experience. Should you have any questions or\nneed further assistance, please don’t hesitate to reach out.\nThank you for choosing us. We look forward to serving you again in the future.\nWarm Regards.`,
+                        `${jsonData.name}(Contact Number: ${callerNumber}) ordered ${jsonData.foods}. This will must be prepared until ${jsonData.time}.`);
                 
                 //Save geocoded address
                 fs.writeFileSync('output.json', JSON.stringify(jsonData, null, 2)); // Write to file with address
