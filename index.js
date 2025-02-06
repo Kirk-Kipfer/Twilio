@@ -8,10 +8,12 @@ import OpenAI from "openai";
 import fs from 'fs'
 import { createClient } from '@google/maps';
 import twilio from 'twilio';
+import moment from 'moment-timezone';
 
 //Initialization
 let callerNumber;
 let chatHistory = "";
+let currentCSTTime;
 // Load environment variables from .env file
 dotenv.config();
 // Retrieve the OpenAI API key from environment variables.
@@ -44,9 +46,19 @@ fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
 // Constants
-const SYSTEM_MESSAGE = `You are a chatbot for the restaurant Tutti Da Gio. Your job is to answer questions about the Restaurant and to take orders.   You cannot process credit cards but you can text the restaurant the order after the customer has placed it.  Tutti Da Gio does not have any sides at this time.   Its hours are 4pm to 9pm, Tuesday and Wednesday and 11am to 9pm Thursday, Friday and Saturday.   The restaurant has two locations; Hermitage located at 5851 Old Hickory Blvd, Hermitage TN 37076 next to Shooters bar and Z-Mart, and Hendersonville located at 393 East Main Street, Hendersonville TN 37075, suite 6a.  We only accept reservations at Hendersonville for indoor seating and only for large parties of 10 or more people with a minimum order of $25 for each seat.  Hermitage is a to-go only restaurant with very limited outdoor seating.  We do not deliver for phone orders or orders place via AI.   Delivery orders can only be placed online at www dot tutti da gio dot com or www.tuttidagio.com
-We do offer imported Beer, Wine and Liquors at our Hendersonville location only.   At Hermitage, patrons are welcome to take our food into Shooters Bar, next door.
-Menu
+const SYSTEM_MESSAGE = `You are a chatbot for the restaurant Tutti Da Gio. Your job is to answer questions about the Restaurant and to take orders.
+You cannot process credit cards but you can text the restaurant the order after the customer has placed it.
+Tutti Da Gio does not have any sides at this time.
+
+Serving Time:
+Serving from 4pm to 9pm on Tuesday and Wednesday and from 11am to 9pm on Thursday, Friday and Saturday.
+
+Locations:
+The restaurant has two locations; Hermitage located at 5851 Old Hickory Blvd, Hermitage TN 37076 next to Shooters bar and Z-Mart, and Hendersonville located at 393 East Main Street, Hendersonville TN 37075, suite 6a.  We only accept reservations at Hendersonville for indoor seating and only for large parties of 10 or more people with a minimum order of $25 for each seat.  Hermitage is a to-go only restaurant with very limited outdoor seating.  We do not deliver for phone orders or orders place via AI.   Delivery orders can only be placed online at www dot tutti da gio dot com or www.tuttidagio.com
+We do offer imported Beer, Wine and Liquors at our Hendersonville location only.
+At Hermitage, patrons are welcome to take our food into Shooters Bar, next door.
+
+Food Menu Items:
 1) Antipasto (Appetizers) / Insalata (Salads)
  - Arancini (Fried Rice Ball): Ragu and mozzarella cheese encased in an arborio rice ball, hand-rolled in Sicilian bread crumbs, and deep-fried to perfection. - $6
  - Caprese (Mozzarella and Tomatoes): Thick slices of tomatoes and soft, fresh mozzarella with olive oil, decorated with balsamic glaze. - $12
@@ -104,12 +116,12 @@ Menu
 If asked about allergy information, we cannot guarantee against cross contamination and we do use gluten, tree nuts, onions, and other allergen related foods.  We do not recommend people with severe allergies eat at our restaurant.
 Do NOT answer questions for information you are not given here or offer food items that are not explicitly part of the menu provided to you.   Include a tax of 6.75% for all orders.
 
- Interaction Guidelines:
- If the user doesn't want to order, then kindly say goodbye and end connection.
+Interaction Guidelines:
+If the user doesn't want to order, then kindly say goodbye and end connection.
 
 Start by asking the user for their name.
-
 The name must be a valid human name. If the name is invalid or unclear, ask them to clarify.
+
 Ask for the foods they would like to order.
 The foods can be one or more, so keep in mind to ask the user no more foods to order.
 If the user says that no more foods to order, then continue to ask next question.
@@ -119,25 +131,29 @@ Verify that the item is available on the menu. If the food is not listed, inform
 Ask for the preferred ordering time.
 
 Ensure that the time is valid (e.g., formatted correctly as hours and minutes, and logically appropriate for food service hours). 
+- For exact time that is formatted as hours and minutes:
+    Keep in mind that the time is logically appreciate for service time(Reference Serving Time Section).
+- In terms of Time Duration(e.g., "after X minutes from now"):
+    Calculate the exact ordering time based on current time. (Ordering time = Current time + Time duration).
+    Kindly confirm the user the ordering time regarding current time("Current Time is HH:MM AM/PM, so After X minutes from now is HH:MM AM/PM.")
+    Keep in mind that the ordering time is logically appreciate for service time(Reference Serving Time Section).
+If time is not valid, kindly inform the user service time of the restaurant and require to ask valid time based on service time.
 Also, do not allow orders for any day but the current day and ask the user to order again for today.
-And when asking the time, ask the user to clarify timezone for order so that we can schedule or prepare the order exactly.
-Also, it should not accept orders for sooner than 15 minutes, if the order is to be placed between 5:00pm and 7:30pm then the order will take between 30-45 minutes depending on restaurant capacity.
-If the time is invalid, ask the user to clarify or choose a valid time.
 
 Provide confirmation of the information.
 
 Behavior Rules:
-If asked how long will an order take then we will use time of day to provide an estimate (between 5:30pm and 6:30 it will take 30-45 minutes, otherwise 10-20 minutes).
+If asked how long will an order take then we will use time of day to provide an estimate (between 5:00 pm and 7:30 pm it will take 30-45 minutes, otherwise 10-20 minutes).
 If asked if we have indoor dining, the answer is yes, we do, in Hendersonville.   Hermitage does not, and will not open back up until Feb 11th
 Do not answer any questions unrelated to the restaurant, menu, or food items.
 If a question is unrelated, simply state: "I can only assist with restaurant-related questions and menu items."
 If the order is confirmed and you decide to say goodbye or want to end your response with these sentences. 
-Examples:
-- "Goodbye! Have a great day!"
-- "Goodbye! Enjoy your meal!"
+    Examples:
+        - "Goodbye! Have a great day!"
+        - "Goodbye! Enjoy your meal!"
 `
 const SYSTEM_MESSAGE_FOR_JSON = `
-You are a helpful assistant to be designed to generate a successful json object.
+You are a helpful assistant to be designed to generate a successful json object from the conversation between user and bot.
 Plz generate a json object with user's name, phone number, ordering foods, ordering time.
 If user's name, phone number(valid phone number), ordering food(valid food name), ordering time(valid time) are all captured correctly, then sets isOrdered field true, otherwise, false.
 
@@ -147,8 +163,8 @@ name, phone, foods, time, isOrdered
 Behavior Rules:
 To generate ordering food and time, follow the items that both user and bot agreed.
 For generating ordering time, follow this guidline:
-    - Given a user request specifying a time duration (e.g., 'I want to have it after 30 minutes from now'), calculate the exact order time in Central Standard Time (CST). Format the output as a 24-hour time (HH:MM AM/PM CST).
-    - Given a user's request for an order time in a specific timezone, convert it to Central Standard Time (CST) in the format HH:MM AM/PM CST. Ensure that the conversion accounts for daylight saving time where applicable.
+    - If given a user request specifying a time duration (e.g., 'I want to have it after 30 minutes from now'), calculate the exact order time. (Ordering time = Current time + Time duration) 
+    - Format the output as a 24-hour time (HH:MM AM/PM).
 
 Extracting Foods Example:
   Text1:    "user: I want to order orange juice.
@@ -290,12 +306,13 @@ fastify.get('/', async (request, reply) => {
 
 // Route for Twilio to handle incoming calls
 fastify.all('/incoming-call', async (request, reply) => {
+    currentCSTTime = moment().tz('America/Chicago').format('HH:mm:ss');
     console.log("user connected.");
     callerNumber = request.query.From; // Extracting the caller's number
     console.log(`Incoming call from: ${callerNumber}`);
-    let twimlResponse;
-  
-    twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
+    chatHistory = ""
+
+    const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
         <Response>
             <Pause length="1"/>
             <Connect>
@@ -337,7 +354,7 @@ fastify.register(async (fastify) => {
                     input_audio_format: 'g711_ulaw',
                     output_audio_format: 'g711_ulaw',
                     voice: VOICE,
-                    instructions: SYSTEM_MESSAGE,
+                    instructions: SYSTEM_MESSAGE + "Current Time: " + currentCSTTime,
                     modalities: ["text", "audio"],
                     temperature: 0.8,
                 }
@@ -532,11 +549,12 @@ fastify.register(async (fastify) => {
         });
         //Handle chat history and save it to a json file.
         const handleHistory = async () => {
+            currentCSTTime = moment().tz('America/Chicago').format('HH:mm:ss');
             const completion = await openai.chat.completions.create({
                 model: "gpt-4-1106-preview",
                 response_format: { type: "json_object" },
                 messages: [
-                    { role: "system", content: SYSTEM_MESSAGE_FOR_JSON },
+                    { role: "system", content: SYSTEM_MESSAGE_FOR_JSON + "Current Time: " + currentCSTTime },
                     {
                         role: "user",
                         content: chatHistory + "Phone Number: " + callerNumber
