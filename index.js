@@ -161,15 +161,18 @@ Interaction Guidelines:
 3. If the user doesn't want to order, then kindly say goodbye and end conversation.
 
 4. Confirmation
-    Before providing confirmation, tell the user to listen carefully to the end of the confirmation message.
-    Then provide confirmation of all information(user's name, ordering foods, ordering time).
-    When asking confirmation, repeat or mention the user's name, all ordering foods, ordering time and ask the user no more things to add to the order.
+    First, when providing confirmation, you must tell the user to listen carefully to the end of the confirmation message.
+    Next, when asking confirmation, repeat or mention the user's name, all ordering foods, ordering time and ask the user no more things to add to the order.
+        When telling about ordering foods, keep in mind to mention the cound of each food. (If the user didn't mention about the cound of food, then the count is one.)
+        Speak food names clearly, slowly, correctly.
     Then, ask the user if checked the whole confirmation and if there's anything else need to order.
     If user added some more foods or changed something, kindly ask confirmation again based on previous confirmation and added features.
-    Repeat confirmation when the user confirmed it.
+    If user confirmed or agreed the order without listening to the end of the confirmation, don't move next and start confirmation again from the "First".
+    Repeat confirmation until the user confirms it.
 
 5. After confirmation & Ending Conversation
-    If the order is confirmed(user says everything is correct and satisfied with the order), then kindly end conversation with these sentenses. 
+    If the order is confirmed(user says everything is right or correct and satisfied with the order), then kindly end conversation with these sentenses. 
+    You must mention 'Goodbye' when ending the call.
         Examples:
             - "Goodbye! Have a great day!"
             - "Goodbye! Enjoy your meal!"
@@ -183,8 +186,8 @@ If a question is unrelated, simply state: "I can only assist with restaurant-rel
 const SYSTEM_MESSAGE_FOR_JSON = `
 You are a helpful assistant to be designed to generate a successful json object from the conversation between user and bot.
 Plz generate a json object with user's name, phone number, ordering foods, ordering time.
-If user's name, phone number(valid phone number), ordering food(valid food name), ordering time(valid time) are all captured correctly, then sets isOrdered field true, otherwise, false.
-Generate user's name, ordering foods, ordering time from the last confirmation message which is confirmed.
+Carefully analyze the conversation to see if the order has been confirmed, and if so, set isOrdered field to true, if not set false.
+If the order has been confirmed, then generate user's name, ordering foods, ordering time from the conversation(based on the last confirmation message or last confirmed content(name, foods, time) which the user has confirmed).
     
 Field Names:
 name, phone, foods, time, isOrdered
@@ -196,6 +199,9 @@ For generating ordering time, follow this guidline:
 When generating ordering foods and time, must based on last bot's confirmation message that the user confirmed or agreed.
 
 When generating foods field, reference below menu.
+Keep in mind to mention the count of each food.
+    Example:
+        1 Arancini, 1 Caprese, 2 Parmigianas
 For multiple foods the user requires, then separate each food by ",".
 This below menu is foods menu so the foods must be items in the menu.
 Menu
@@ -264,27 +270,42 @@ async function transcribeAudio(audioBuffer) {
             content: audioBuffer.toString('base64'),
         },
         config: {
-            encoding: 'MULAW', // Adjust based on audio format
-            sampleRateHertz: 8000, // Twilio sends 8000 Hz audio
+            encoding: 'MULAW',  // Use 'MULAW' as you are working with Twilio audio, but consider 'LINEAR16' if possible.
+            sampleRateHertz: 8000,  // Keep this at 8000 Hz, matching Twilio's audio sample rate.
             languageCode: 'en-US',
+            interimResults: true,  // Enable interim results to receive partial transcriptions in real-time.
+            enableWordTimeOffsets: true,  // Enable word-level timestamps to analyze which words are being missed.
+            enableAutomaticPunctuation: false,  // Optional: Enable punctuation
+            maxAlternatives: 1,  // Only get one transcription alternative to avoid inconsistencies.
             speechContexts: [{
-              phrases: ['Antipasto', 'Arancini', 'Caprese', 'Parmigiana', 'Vulcano Insalata',
-                'Polpette Pomodoro', 'Gamberi con Aglio e Burro', 'Alicuti', 'Lipari', 
-                'Panini', 'Pizze', 'Margherita', 'Diavola', 'Capricciosa', 'Norma', 
-                'Soppressata', 'Calzone', 'Pizze Bianche', 'Parma', 'Quattro Formaggi', 'Salsicce e Patate', 
-                'Bambino', 'Pasta al Burro', 'Bambino Pomodoro', 'Bambino Formaggio', 'Bambino Polpette', 'Primi', 
-                'Sicilian Lasagna', 'Pasta Aglio e Olio', 'Pasta al Pomodoro', 'Pasta alla Norma', 'Pasta al Sugo con Polpette', 'Gnocchi con Gamberi e Zaffrano', 
-                'Pasta alla Giovannina', 'Tortellini con Prosciutto e Panna', 'Gnocchi ai Pesto', 'Gnocchi ai Quattro Formaggi', 'Pasta ai Gamberi e Zucchine', 'Pasta al Salmone', 
-                'Pasta alle Vongole', 'Dolce', 'Bianco e Nero', 'Cannolo', 'Tiramisu', 'Panna Cotta', 
-                'Bevande', 'Bottled Water', 'Pepsi Products', 'Coke Products', 'Sparkling Water', 'San Pellegrino Flavors', 
-                'Espresso'], // Custom phrases
+                phrases: [
+                    'Caprese', 'Arancini', 'Antipasto', 'Parmigiana', 'Vulcano Insalata',
+                    'Polpette Pomodoro', 'Gamberi con Aglio e Burro', 'Alicuti', 'Lipari', 
+                    'Panini', 'Pizze', 'Margherita', 'Diavola', 'Capricciosa', 'Norma', 
+                    'Soppressata', 'Calzone', 'Pizze Bianche', 'Parma', 'Quattro Formaggi', 'Salsicce e Patate', 
+                    'Bambino', 'Pasta al Burro', 'Bambino Pomodoro', 'Bambino Formaggio', 'Bambino Polpette', 'Primi', 
+                    'Sicilian Lasagna', 'Pasta Aglio e Olio', 'Pasta al Pomodoro', 'Pasta alla Norma', 'Pasta al Sugo con Polpette', 'Gnocchi con Gamberi e Zaffrano', 
+                    'Pasta alla Giovannina', 'Tortellini con Prosciutto e Panna', 'Gnocchi ai Pesto', 'Gnocchi ai Quattro Formaggi', 'Pasta ai Gamberi e Zucchine', 'Pasta al Salmone', 
+                    'Pasta alle Vongole', 'Dolce', 'Bianco e Nero', 'Cannolo', 'Tiramisu', 'Panna Cotta', 
+                    'Bevande', 'Bottled Water', 'Pepsi Products', 'Coke Products', 'Sparkling Water', 'San Pellegrino Flavors', 
+                    'Espresso'
+                ],  // Custom phrases to boost accuracy for specific food names.
+                boost: 50.0  // Optionally boost the probability of these custom phrases.
             }],
-        },
+            model: 'phone_call',  // Use the 'phone_call' model, which is optimized for audio from telephony.
+            detailedResults: true,  // Enable detailed results for better insight into transcription.
+        }
     };
 
     try {
         const [response] = await speechClient.recognize(request);
-        const transcription = response.results.map(result => result.alternatives[0].transcript).join('\n');
+        let transcription = "";
+        response.results.forEach((result) => {
+            result.alternatives.forEach((alternative) => {
+                // Log each alternative result to see possible alternatives
+                transcription += alternative.transcript + '\n';
+            });
+        });
         return transcription;
     } catch (err) {
         console.error('Error transcribing audio:', err);
