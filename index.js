@@ -3,6 +3,7 @@ import WebSocket from 'ws';
 import dotenv from 'dotenv';
 import fastifyFormBody from '@fastify/formbody';
 import fastifyWs from '@fastify/websocket';
+import fastifyMultipart from "@fastify/multipart";
 import {SpeechClient} from '@google-cloud/speech';
 import OpenAI from "openai";
 import fs from 'fs'
@@ -19,6 +20,7 @@ dotenv.config();
 // Retrieve the OpenAI API key from environment variables.
 const { OPENAI_API_KEY } = process.env;
 const { GOOGLE_MAP_API_KEY } = process.env;
+const { TWILIO_NUMBER } = process.env;
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const managerNumber = process.env.MANAGER_NUMBER;
@@ -41,22 +43,36 @@ const googleMapsClient = createClient({
 const speechClient = new SpeechClient({keyFilename: './keyFile.json'});
 
 // Initialize Fastify
-const fastify = Fastify();
+const fastify = Fastify({
+    logger: true, // This enables logging automatically
+});
 fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
+fastify.register(fastifyMultipart);
 
 // Constants
 const SYSTEM_MESSAGE = `You are a chatbot for the restaurant Tutti Da Gio. Your job is to answer questions about the Restaurant and to take orders.
 You cannot process credit cards but you can text the restaurant the order after the customer has placed it.
 Tutti Da Gio does not have any sides at this time.
 
+Restaurant Related Information:
+    - Indoor/Outdoor Seating
+        We only accept reservations at Hendersonville for indoor seating and only for large parties of 10 or more people with a minimum order of $25 for each seat. 
+        Hermitage is a to-go only restaurant with very limited outdoor seating.
+    - Delivery
+        We do not deliver for phone orders or orders place via AI.   
+        Delivery orders can only be placed online at www dot tutti da gio dot com or www.tuttidagio.com
+    - Offer/Serve
+        We do offer imported Beer, Wine and Liquors at our Hendersonville location only, not for Hermitage.
+        At Hermitage, patrons are welcome to take our food into Shooters Bar, next door.
+
 Serving Time:
 Serving from 4pm to 9pm on Tuesday and Wednesday and from 11am to 9pm on Thursday, Friday and Saturday.
 
 Locations:
-The restaurant has two locations; Hermitage located at 5851 Old Hickory Blvd, Hermitage TN 37076 next to Shooters bar and Z-Mart, and Hendersonville located at 393 East Main Street, Hendersonville TN 37075, suite 6a.  We only accept reservations at Hendersonville for indoor seating and only for large parties of 10 or more people with a minimum order of $25 for each seat.  Hermitage is a to-go only restaurant with very limited outdoor seating.  We do not deliver for phone orders or orders place via AI.   Delivery orders can only be placed online at www dot tutti da gio dot com or www.tuttidagio.com
-We do offer imported Beer, Wine and Liquors at our Hendersonville location only.
-At Hermitage, patrons are welcome to take our food into Shooters Bar, next door.
+The restaurant has two locations:
+    - Hermitage located at 5851 Old Hickory Blvd, Hermitage TN 37076 next to Shooters bar and Z-Mart, and 
+    - Hendersonville located at 393 East Main Street, Hendersonville TN 37075, suite 6a.  
 
 Food Menu Items:
 1) Antipasto (Appetizers) / Insalata (Salads)
@@ -117,82 +133,67 @@ If asked about allergy information, we cannot guarantee against cross contaminat
 Do NOT answer questions for information you are not given here or offer food items that are not explicitly part of the menu provided to you.   Include a tax of 6.75% for all orders.
 
 Interaction Guidelines:
-If the user doesn't want to order, then kindly say goodbye and end connection.
+1. You have to answer very carefully, kindly and quickly for the user's questions.
+    No matter how important a question you have asked or what you are saying, if a user asks a question in the middle of your conversation, answer the user's question first and then ask the question again or continue what you were saying.
 
-Start by asking the user for their name.
-The name must be a valid human name. If the name is invalid or unclear, ask them to clarify.
+2. You have to get some informations from the user, so kindly ask to get information from the user.
+    -Name
+        Ask the user for their name.
+        The name must be a valid human name. If the name is invalid or unclear, ask them to clarify.
+    -Foods
+        Ask for the foods they would like to order.
+        When asking the foods, plz mention his/her name.
+        The foods can be one or more, so keep in mind to ask the user no more foods to order.
+        If the user says that no more foods to order, then continue to ask next question.
+        Verify that the items is available on the menu. If the food is not listed, inform the user and prompt them to choose a valid menu item.
+    -Time
+        Ask for the preferred ordering time.
+        Ensure that the time is valid (e.g., formatted correctly as hours and minutes, and logically appropriate for food service hours). 
+        - For exact time that is formatted as hours and minutes:
+            Keep in mind that the time is logically appreciate for service time(Reference Serving Time Section).
+        - In terms of Time Duration(e.g., "after X minutes from now"):
+            Calculate the exact ordering time based on current time. (Ordering time = Current time + Time duration).
+            Kindly confirm the user the ordering time regarding current time("Current Time is HH:MM AM/PM, so After X minutes from now is HH:MM AM/PM.")
+            Keep in mind that the ordering time is logically appreciate for service time(Reference Serving Time Section).
+        If time is not valid, kindly inform the user service time of the restaurant and require to ask valid time based on service time.
+        Also, do not allow orders for any day but the current day and ask the user to order again for today.
 
-Ask for the foods they would like to order.
-The foods can be one or more, so keep in mind to ask the user no more foods to order.
-If the user says that no more foods to order, then continue to ask next question.
+3. If the user doesn't want to order, then kindly say goodbye and end conversation.
 
-When asking the foods, plz mention his/her name.
-Verify that the item is available on the menu. If the food is not listed, inform the user and prompt them to choose a valid menu item.
-Ask for the preferred ordering time.
+4. Confirmation
+    Before providing confirmation, tell the user to listen carefully to the end of the confirmation message.
+    Then provide confirmation of all information(user's name, ordering foods, ordering time).
+    When asking confirmation, repeat or mention the user's name, all ordering foods, ordering time and ask the user no more things to add to the order.
+    Then, ask the user if checked the whole confirmation and if there's anything else need to order.
+    If user added some more foods or changed something, kindly ask confirmation again based on previous confirmation and added features.
+    Repeat confirmation when the user confirmed it.
 
-Ensure that the time is valid (e.g., formatted correctly as hours and minutes, and logically appropriate for food service hours). 
-- For exact time that is formatted as hours and minutes:
-    Keep in mind that the time is logically appreciate for service time(Reference Serving Time Section).
-- In terms of Time Duration(e.g., "after X minutes from now"):
-    Calculate the exact ordering time based on current time. (Ordering time = Current time + Time duration).
-    Kindly confirm the user the ordering time regarding current time("Current Time is HH:MM AM/PM, so After X minutes from now is HH:MM AM/PM.")
-    Keep in mind that the ordering time is logically appreciate for service time(Reference Serving Time Section).
-If time is not valid, kindly inform the user service time of the restaurant and require to ask valid time based on service time.
-Also, do not allow orders for any day but the current day and ask the user to order again for today.
-
-Provide confirmation of the information.
+5. After confirmation & Ending Conversation
+    If the order is confirmed(user says everything is correct and satisfied with the order), then kindly end conversation with these sentenses. 
+        Examples:
+            - "Goodbye! Have a great day!"
+            - "Goodbye! Enjoy your meal!"
 
 Behavior Rules:
 If asked how long will an order take then we will use time of day to provide an estimate (between 5:00 pm and 7:30 pm it will take 30-45 minutes, otherwise 10-20 minutes).
 If asked if we have indoor dining, the answer is yes, we do, in Hendersonville.   Hermitage does not, and will not open back up until Feb 11th
 Do not answer any questions unrelated to the restaurant, menu, or food items.
 If a question is unrelated, simply state: "I can only assist with restaurant-related questions and menu items."
-If the order is confirmed and you decide to say goodbye or want to end your response with these sentences. 
-    Examples:
-        - "Goodbye! Have a great day!"
-        - "Goodbye! Enjoy your meal!"
 `
 const SYSTEM_MESSAGE_FOR_JSON = `
 You are a helpful assistant to be designed to generate a successful json object from the conversation between user and bot.
 Plz generate a json object with user's name, phone number, ordering foods, ordering time.
 If user's name, phone number(valid phone number), ordering food(valid food name), ordering time(valid time) are all captured correctly, then sets isOrdered field true, otherwise, false.
-
+Generate user's name, ordering foods, ordering time from the last confirmation message which is confirmed.
+    
 Field Names:
 name, phone, foods, time, isOrdered
 
 Behavior Rules:
-To generate ordering food and time, follow the items that both user and bot agreed.
 For generating ordering time, follow this guidline:
     - If given a user request specifying a time duration (e.g., 'I want to have it after 30 minutes from now'), calculate the exact order time. (Ordering time = Current time + Time duration) 
     - Format the output as a 24-hour time (HH:MM AM/PM).
-
-Extracting Foods Example:
-  Text1:    "user: I want to order orange juice.
-            bot: Sorry, we don't service that you mentioned, plz order food in our menu.
-            user: okay. Which food can you provide for me for a meal?
-            bot: I think X pasta is the most suitable for you. What about this?
-            user: I don't like pasta, I want the most delicious pizza in your menu.
-            bot: Okay, then I'll provide X pizza for you, is it okay?
-            user: sure.
-            bot: No more foods to order?
-            user: I want to have the second item on your menu.
-            bot: The second item is Y pasta, do you like to order it?
-            user: Yes.
-            bot: No more foods to order?
-            user: Nothing."
-    Food: X pizza, Ypasta
-
-  Text2:    "user: I like pasta.
-            bot: Okay, which pasta do you want, we can service various types of pasta, such as ...
-            user: Oh, there are no pasta I like.
-            bot: Then, do you want pizza?
-            user: Okay.
-            bot: We are providing various types of pizza, so which pizza do you want to have? we have ... types of pizza...
-            user: I want ...pizza, is it available on your menu?
-            bot: Sorry, we don't service it, what about X pizza?
-            user: no, then I want Y pizza, Can you provide it?
-            bot: sure. no problem."
-    Food: Y pizza
+When generating ordering foods and time, must based on last bot's confirmation message that the user confirmed or agreed.
 
 When generating foods field, reference below menu.
 For multiple foods the user requires, then separate each food by ",".
@@ -266,6 +267,18 @@ async function transcribeAudio(audioBuffer) {
             encoding: 'MULAW', // Adjust based on audio format
             sampleRateHertz: 8000, // Twilio sends 8000 Hz audio
             languageCode: 'en-US',
+            speechContexts: [{
+              phrases: ['Antipasto', 'Arancini', 'Caprese', 'Parmigiana', 'Vulcano Insalata',
+                'Polpette Pomodoro', 'Gamberi con Aglio e Burro', 'Alicuti', 'Lipari', 
+                'Panini', 'Pizze', 'Margherita', 'Diavola', 'Capricciosa', 'Norma', 
+                'Soppressata', 'Calzone', 'Pizze Bianche', 'Parma', 'Quattro Formaggi', 'Salsicce e Patate', 
+                'Bambino', 'Pasta al Burro', 'Bambino Pomodoro', 'Bambino Formaggio', 'Bambino Polpette', 'Primi', 
+                'Sicilian Lasagna', 'Pasta Aglio e Olio', 'Pasta al Pomodoro', 'Pasta alla Norma', 'Pasta al Sugo con Polpette', 'Gnocchi con Gamberi e Zaffrano', 
+                'Pasta alla Giovannina', 'Tortellini con Prosciutto e Panna', 'Gnocchi ai Pesto', 'Gnocchi ai Quattro Formaggi', 'Pasta ai Gamberi e Zucchine', 'Pasta al Salmone', 
+                'Pasta alle Vongole', 'Dolce', 'Bianco e Nero', 'Cannolo', 'Tiramisu', 'Panna Cotta', 
+                'Bevande', 'Bottled Water', 'Pepsi Products', 'Coke Products', 'Sparkling Water', 'San Pellegrino Flavors', 
+                'Espresso'], // Custom phrases
+            }],
         },
     };
 
@@ -289,13 +302,32 @@ const sendingSMS = async (content, contentToManager) => {
       });
     //Sending SMS to manager
     const messageToManager = await client.messages.create({
-    body: contentToManager,
-    messagingServiceSid: messagingServiceSid,
-    to: managerNumber,
+        body: contentToManager,
+        messagingServiceSid: messagingServiceSid,
+        to: managerNumber,
     });
 
     console.log(message.body + "was sent to the user.");
     console.log(messageToManager.body + "was sent to the manager.");
+}
+
+//Handle chat history and save it to a json file.
+const handleHistory = async () => {
+    currentCSTTime = moment().tz('America/Chicago').format('HH:mm:ss');
+    // Transcribe the recording
+    console.log("Chat history::::::" + chatHistory);
+    const completion = await openai.chat.completions.create({
+        model: "gpt-4-1106-preview",
+        response_format: { type: "json_object" },
+        messages: [
+            { role: "system", content: SYSTEM_MESSAGE_FOR_JSON + "Current Time: " + currentCSTTime },
+            {
+                role: "user",
+                content: chatHistory + "Phone Number: " + callerNumber
+            },
+        ],
+    });
+    return completion.choices[0].message.content; // Extract the JSON content
 }
 
 //Routing
@@ -311,7 +343,7 @@ fastify.all('/incoming-call', async (request, reply) => {
     callerNumber = request.query.From; // Extracting the caller's number
     console.log(`Incoming call from: ${callerNumber}`);
     chatHistory = ""
-
+    
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
         <Response>
             <Pause length="1"/>
@@ -354,9 +386,9 @@ fastify.register(async (fastify) => {
                     input_audio_format: 'g711_ulaw',
                     output_audio_format: 'g711_ulaw',
                     voice: VOICE,
-                    instructions: SYSTEM_MESSAGE + "Current Time: " + currentCSTTime,
+                    instructions: SYSTEM_MESSAGE + "Current Time: " + currentCSTTime + ". Please keep your responses concise and limit them to 16384 tokens.",
                     modalities: ["text", "audio"],
-                    temperature: 0.8,
+                    temperature: 1
                 }
             };
 
@@ -434,6 +466,11 @@ fastify.register(async (fastify) => {
             try {
                 const response = JSON.parse(data);
 
+                // Extract food items only
+                // if (response.foods) {
+                //     console.log("&&&&&&&&&&&&&&&Food&&&&&&&&&&&&&&&& Items Detected:", response.foods);
+                // }
+
                 if (response.type === 'response.audio.done') {
                     if (botBuffer.length != 0){
                         //Clone botBuffer for async
@@ -443,6 +480,7 @@ fastify.register(async (fastify) => {
                         (async () => {
                             try {
                                 const transcription = await transcribeAudio(botBufferToProcess);
+                                console.log("******OpenAI response finished: *******" + transcription)
                                 chatHistory += 'bot:' + transcription + '\n';
                                 //Disconnect call when OpenAI says goodbye
                                 if (transcription.includes("goodbye")) {
@@ -450,7 +488,7 @@ fastify.register(async (fastify) => {
                                     setTimeout(() => {
                                         console.log('Closing connection after 5 seconds...');
                                         connection.close(1000, 'Normal closure'); // Close with status code 1000
-                                    }, 10000);
+                                    }, 12000);
                                 }
                             } catch (error) {
                                 console.error('Error during transcription:', error);
@@ -485,9 +523,9 @@ fastify.register(async (fastify) => {
                         streamSid: streamSid,
                         media: { payload: Buffer.from(response.delta, 'base64').toString('base64') }
                     };
+
                     connection.send(JSON.stringify(audioDelta));
 
-                    // First delta from a new response starts the elapsed time counter
                     if (!responseStartTimestampTwilio) {
                         responseStartTimestampTwilio = latestMediaTimestamp;
                     }
@@ -496,10 +534,12 @@ fastify.register(async (fastify) => {
                         lastAssistantItem = response.item_id;
                     }
                     
+                    // console.log("OpenAI Stream is Coming!!!!!!!!!!!")
                     sendMark(connection, streamSid);
                 }
 
                 if (response.type === 'input_audio_buffer.speech_started') {
+                    // console.log('OpenAI detected user audio request ********'); // Specific log for speech detection
                     handleSpeechStartedEvent();
                 }
             } catch (error) {
@@ -524,11 +564,12 @@ fastify.register(async (fastify) => {
                             const buffer = Buffer.from(data.media.payload, 'base64');
                             userBuffer = Buffer.concat([userBuffer, buffer]);
                             openAiWs.send(JSON.stringify(audioAppend));
+                            // console.log("Sending Audio to OpenAI-----------");
                         }
                         break;
                     case 'start':
                         streamSid = data.start.streamSid;
-                        console.log('Incoming stream has started');
+                        // console.log('Incoming stream has started');
 
                         responseStartTimestampTwilio = null; 
                         latestMediaTimestamp = 0;
@@ -547,31 +588,15 @@ fastify.register(async (fastify) => {
             }
             
         });
-        //Handle chat history and save it to a json file.
-        const handleHistory = async () => {
-            currentCSTTime = moment().tz('America/Chicago').format('HH:mm:ss');
-            const completion = await openai.chat.completions.create({
-                model: "gpt-4-1106-preview",
-                response_format: { type: "json_object" },
-                messages: [
-                    { role: "system", content: SYSTEM_MESSAGE_FOR_JSON + "Current Time: " + currentCSTTime },
-                    {
-                        role: "user",
-                        content: chatHistory + "Phone Number: " + callerNumber
-                    },
-                ],
-            });
-            return completion.choices[0].message.content; // Extract the JSON content
-        }
         // Handle connection close
         connection.on('close', async () => {
             if (openAiWs.readyState === WebSocket.OPEN) openAiWs.close();
-            console.log('user disconnected.\n' + chatHistory);
+            
+            //Handling History
             try {
-
                 const jsonResponse = await handleHistory();
                 const jsonData = JSON.parse(jsonResponse); // Parse the string to JSON
-                 
+                
                 if (jsonData.isOrdered == false){
                     console.log("Order is not confirmed.");
                     return;
@@ -586,6 +611,7 @@ fastify.register(async (fastify) => {
             } catch (error) {
                 console.error('Error:', error);
             }
+            // console.log('user disconnected.\n' + chatHistory);
         });
 
         // Handle WebSocket close and errors
