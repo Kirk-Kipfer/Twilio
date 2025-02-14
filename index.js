@@ -10,6 +10,7 @@ import fs from 'fs'
 import { createClient } from '@google/maps';
 import twilio from 'twilio';
 import moment from 'moment-timezone';
+import mysql from 'mysql2/promise';
 
 //Initialization
 let callerNumber;
@@ -21,6 +22,7 @@ dotenv.config();
 const { OPENAI_API_KEY } = process.env;
 const { GOOGLE_MAP_API_KEY } = process.env;
 const { TWILIO_NUMBER } = process.env;
+const {DB_HOST, DB_USER, DB_PASSWORD, DB_DATABASE} = process.env;
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const managerNumber = process.env.MANAGER_NUMBER;
@@ -38,6 +40,7 @@ const openai = new OpenAI({apiKey: OPENAI_API_KEY});
 const googleMapsClient = createClient({
     key: GOOGLE_MAP_API_KEY
 });
+
 
 //Initialize sppechClient for live audio transctibing
 const speechClient = new SpeechClient({keyFilename: './keyFile.json'});
@@ -144,8 +147,9 @@ Interaction Guidelines:
         Ask for the foods they would like to order.
         When asking the foods, plz mention his/her name.
         The foods can be one or more, so keep in mind to ask the user no more foods to order.
-        If the user says that no more foods to order, then continue to ask next question.
+        Even if the user adds more food, don't move on to the next question, but ask again if there are any more items they would like to order.
         Verify that the items is available on the menu. If the food is not listed, inform the user and prompt them to choose a valid menu item.
+        ***Only if the user says that no more foods to order, then continue to ask next question.
     -Time
         Ask for the preferred ordering time.
         Ensure that the time is valid (e.g., formatted correctly as hours and minutes, and logically appropriate for food service hours). 
@@ -161,14 +165,17 @@ Interaction Guidelines:
 3. If the user doesn't want to order, then kindly say goodbye and end conversation.
 
 4. Confirmation
-    First, when providing confirmation, you must tell the user to listen carefully to the end of the confirmation message.
-    Next, when asking confirmation, repeat or mention the user's name, all ordering foods, ordering time and ask the user no more things to add to the order.
+    First: When providing confirmation, you must tell the user to listen carefully to the end of the confirmation message.
+    Second: When asking confirmation, repeat or mention the user's name, all ordering foods, ordering time, total price and ask the user no more things to add to the order.
         When telling about ordering foods, keep in mind to mention the cound of each food. (If the user didn't mention about the cound of food, then the count is one.)
         Speak food names clearly, slowly, correctly.
-    Then, ask the user if checked the whole confirmation and if there's anything else need to order.
-    If user added some more foods or changed something, kindly ask confirmation again based on previous confirmation and added features.
-    If user confirmed or agreed the order without listening to the end of the confirmation, don't move next and start confirmation again from the "First".
-    Repeat confirmation until the user confirms it.
+        When talking about the total price of food, mention the price and count of each food item first,  and then say the total price.
+    Third: Ask the user if checked the whole confirmation and if there's anything else need to order.
+    Fourth: If user added some more foods or changed something, add or update confirmation.
+            When adding some more foods to the order, don't odd any food in the previous confirmation and add new foods.
+            Must ask confirmation again from the "First" step.
+    If user confirmed or agreed the order without listening to the end of the confirmation, don't move next and start confirmation again from the "First" step.
+    Repeat confirmation until the user confirms it - must start from "First" step again.
 
 5. After confirmation & Ending Conversation
     If the order is confirmed(user says everything is right or correct and satisfied with the order), then kindly end conversation with these sentenses. 
@@ -187,21 +194,23 @@ const SYSTEM_MESSAGE_FOR_JSON = `
 You are a helpful assistant to be designed to generate a successful json object from the conversation between user and bot.
 Plz generate a json object with user's name, phone number, ordering foods, ordering time.
 Carefully analyze the conversation to see if the order has been confirmed, and if so, set isOrdered field to true, if not set false.
-If the order has been confirmed, then generate user's name, ordering foods, ordering time from the conversation(based on the last confirmation message or last confirmed content(name, foods, time) which the user has confirmed).
+If the order has been confirmed, then generate user's name, ordering foods, ordering time, total price from the conversation(based on the last confirmation message or last confirmed content(name, foods, time) which the user has confirmed).
     
 Field Names:
-name, phone, foods, time, isOrdered
+name, phone, foods, time, totalPrice isOrdered
 
 Behavior Rules:
 For generating ordering time, follow this guidline:
     - If given a user request specifying a time duration (e.g., 'I want to have it after 30 minutes from now'), calculate the exact order time. (Ordering time = Current time + Time duration) 
     - Format the output as a 24-hour time (HH:MM AM/PM).
-When generating ordering foods and time, must based on last bot's confirmation message that the user confirmed or agreed.
+When generating ordering foods, time and total price, must based on last bot's confirmation message that the user confirmed or agreed.
 
 When generating foods field, reference below menu.
-Keep in mind to mention the count of each food.
+Keep in mind to mention the count and price of each food.
+If the count of food is 1, the price is the original price of the food in the menu.
+If the count of food is more than 1, the price is equal to the count multiply original price of the food in the menu.
     Example:
-        1 Arancini, 1 Caprese, 2 Parmigianas
+        1 Arancini($6), 1 Caprese($12), 2 Parmigianas($28 - because the price of one Parmigiana is $14 and the count is 2, so the price is $28)
 For multiple foods the user requires, then separate each food by ",".
 This below menu is foods menu so the foods must be items in the menu.
 Menu
@@ -359,7 +368,7 @@ fastify.get('/', async (request, reply) => {
 
 // Route for Twilio to handle incoming calls
 fastify.all('/incoming-call', async (request, reply) => {
-    currentCSTTime = moment().tz('America/Chicago').format('HH:mm:ss');
+    currentCSTTime = moment().tz('America/Chicago').format('hh:mm A');
     console.log("user connected.");
     callerNumber = request.query.From; // Extracting the caller's number
     console.log(`Incoming call from: ${callerNumber}`);
@@ -407,7 +416,7 @@ fastify.register(async (fastify) => {
                     input_audio_format: 'g711_ulaw',
                     output_audio_format: 'g711_ulaw',
                     voice: VOICE,
-                    instructions: SYSTEM_MESSAGE + "Current Time: " + currentCSTTime + ". Please keep your responses concise and limit them to 16384 tokens.",
+                    instructions: SYSTEM_MESSAGE + "Current Time: " + currentCSTTime + ". Please keep your responses concise and limit them to 4096 tokens.",
                     modalities: ["text", "audio"],
                     temperature: 1
                 }
@@ -624,8 +633,9 @@ fastify.register(async (fastify) => {
                 };
                 //Send SMS to the user
                 console.log('Sending SMS...');
-                await sendingSMS(`Dear ${jsonData.name},\nWe are pleased to inform you that your order of ${jsonData.foods} has been successfully processed.\nYour food will be prepared at ${jsonData.time} as requested.\nWe hope you enjoy your meal and have a wonderful experience. Should you have any questions or\nneed further assistance, please don’t hesitate to reach out.\nThank you for choosing us. We look forward to serving you again in the future.\nWarm Regards.`,
-                        `${jsonData.name}(Contact Number: ${callerNumber}) ordered ${jsonData.foods}. This will must be prepared until ${jsonData.time}.`);
+                await sendingSMS(`Dear ${jsonData.name},\nWe are pleased to inform you that your order of ${jsonData.foods} has been successfully processed.\nThe total price of your order is ${jsonData.totalPrice} and your food will be prepared at ${jsonData.time} as requested.\nWe hope you enjoy your meal and have a wonderful experience. Should you have any questions or\nneed further assistance, please don’t hesitate to reach out.\nThank you for choosing us. We look forward to serving you again in the future.\nWarm Regards.`,
+                        `${jsonData.name}(Contact Number: ${callerNumber}) ordered ${jsonData.foods}. The total price of this order is ${jsonData.totalPrice} and this will must be prepared until ${jsonData.time}.`);
+                addOrder(jsonData.name, callerNumber, jsonData.foods, jsonData.time, jsonData.totalPrice)
                 
                 //Save geocoded address
                 fs.writeFileSync('output.json', JSON.stringify(jsonData, null, 2)); // Write to file with address
@@ -645,6 +655,34 @@ fastify.register(async (fastify) => {
         });
     });
 });
+
+//Initializing DB
+const dbConfig = {
+    host: DB_HOST,
+    user: DB_USER,
+    password: DB_PASSWORD,
+    database: DB_DATABASE,
+};
+  
+//Connecting DB and Add Order
+async function addOrder(name, phone, foods, time, price) {
+    try {
+      const connection = await mysql.createConnection(dbConfig);
+      console.log('Connected to MySQL');
+  
+      const query = `INSERT INTO orders (name, phone, foods, price, time) VALUES (?, ?, ?, ?, ?)`;
+      const values = [name, phone, foods, price, time];
+  
+      const [result] = await connection.execute(query, values);
+      console.log(`Order added! Inserted ID: ${result.insertId}`);
+  
+      //Close DB
+      await connection.end();
+    } catch (error) {
+      console.error('Database Error:', error);
+    }
+  }
+  
 
 fastify.listen({ port: PORT, host: '0.0.0.0'}, (err) => {
     if (err) {

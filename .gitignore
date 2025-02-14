@@ -81,6 +81,7 @@ web_modules/
 
 # Google Speech 
 keyFile.json
+keyFile1.json
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
